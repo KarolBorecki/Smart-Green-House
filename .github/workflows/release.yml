@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Wersja do zbudowania (np. v1.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Budowa i publikacja wydania
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-release-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Instalacja PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Ustalenie wersji
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "clean=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Testy jednostkowe
+        run: pio test -e native
+
+      # Numer wersji jest wkompilowywany w firmware, dzieki czemu /api/status
+      # i telemetria w InfluxDB zawsze pokazuja realnie wgrany build.
+      - name: Kompilacja wydania
+        env:
+          GH_VERSION: ${{ steps.version.outputs.clean }}
+        run: |
+          for env_name in nodemcuv2 nodemcuv2-nomux; do
+            PLATFORMIO_BUILD_FLAGS="-D GH_FIRMWARE_VERSION=\\\"${GH_VERSION}\\\"" \
+              pio run -e "$env_name"
+            PLATFORMIO_BUILD_FLAGS="-D GH_FIRMWARE_VERSION=\\\"${GH_VERSION}\\\"" \
+              pio run -e "$env_name" -t buildfs
+            cp ".pio/build/${env_name}/firmware.bin" "firmware-${env_name}-${GH_VERSION}.bin"
+            cp ".pio/build/${env_name}/littlefs.bin" "littlefs-${env_name}-${GH_VERSION}.bin"
+          done
+
+      - name: Sumy kontrolne
+        run: sha256sum firmware-*.bin littlefs-*.bin | tee SHA256SUMS.txt
+
+      - name: Publikacja wydania
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            firmware-*.bin
+            littlefs-*.bin
+            SHA256SUMS.txt
+          body: |
+            ## Instalacja
+
+            **Przez USB:**
+            ```bash
+            esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware-nodemcuv2-${{ steps.version.outputs.clean }}.bin
+            esptool.py --port /dev/ttyUSB0 write_flash 0x200000 littlefs-nodemcuv2-${{ steps.version.outputs.clean }}.bin
+            ```
+
+            **Przez sieć (OTA):**
+            ```bash
+            export GH_OTA_PASSWORD='...'
+            pio run -e ota -t upload
+            ```
+
+            Przed wgraniem sprawdź sumy kontrolne z `SHA256SUMS.txt`.
+            Wariant `nomux` jest dla instalacji bez multipleksera I²C (maks. 2 tace).

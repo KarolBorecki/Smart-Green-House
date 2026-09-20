@@ -1,0 +1,12 @@
+{
+  "name": "gh_domain",
+  "version": "1.0.0",
+  "description": "Logika sterowania szklarnia ziolowa - czysty C++17 bez zaleznosci na Arduino, testowalny natywnie.",
+  "keywords": ["greenhouse", "control", "hysteresis", "irrigation"],
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": ["-I include"]
+  }
+}

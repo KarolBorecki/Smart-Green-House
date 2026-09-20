@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Szklarnia ziołowa</title>
+<style>
+  :root {
+    --bg: #101512; --card: #1a221d; --line: #2a352e;
+    --text: #e8efe9; --muted: #92a398; --accent: #6fcf97; --warn: #f2994a; --err: #eb5757;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .unit { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+         padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #3a473f; display: inline-block; margin-right: 8px; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  button { background: #24302a; color: var(--text); border: 1px solid var(--line);
+           border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  button:hover { border-color: var(--accent); }
+  .banner { border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; display: none; font-size: 14px; }
+  .banner.err { display: block; background: rgba(235,87,87,.15); border: 1px solid var(--err); }
+  .banner.warn { display: block; background: rgba(242,153,74,.15); border: 1px solid var(--warn); }
+  section { margin-top: 20px; }
+  h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+  <h1>Szklarnia ziołowa</h1>
+  <div class="sub" id="meta">łączenie…</div>
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Temperatura</div><div class="value" id="temp">–<span class="unit"> °C</span></div></div>
+    <div class="card"><div class="label">Wilgotność</div><div class="value" id="hum">–<span class="unit"> %</span></div></div>
+    <div class="card"><div class="label">Nastawa</div><div class="value" id="target">–<span class="unit"> °C</span></div></div>
+    <div class="card"><div class="label">Suche tace</div><div class="value" id="dry">–</div></div>
+  </div>
+
+  <section>
+    <h2>Urządzenia</h2>
+    <div class="card" id="actuators"></div>
+  </section>
+
+  <section>
+    <h2>Nawadnianie</h2>
+    <div class="card">
+      <div class="row"><span>Stan</span><strong id="irr-state">–</strong></div>
+      <div class="row"><span>Podlania dzisiaj</span><strong id="irr-pulses">–</strong></div>
+      <div class="row"><span>Kasowanie blokad</span><button onclick="resetFaults()">Resetuj</button></div>
+    </div>
+  </section>
+
+<script>
+const ACTUATORS = [
+  ['pump', 'Pompa'], ['fan', 'Wentylator'], ['heater', 'Maty grzewcze'], ['light', 'Lampy']
+];
+
+function render(s) {
+  const r = s.readings || {}, a = s.actuators || {}, i = s.irrigation || {};
+  document.getElementById('meta').textContent =
+    `${s.device} · v${s.version} · uptime ${Math.floor(s.uptime_s / 3600)} h ${Math.floor(s.uptime_s % 3600 / 60)} min`;
+  document.getElementById('temp').innerHTML =
+    (r.temperature != null ? r.temperature.toFixed(1) : '–') + '<span class="unit"> °C</span>';
+  document.getElementById('hum').innerHTML =
+    (r.humidity != null ? r.humidity.toFixed(0) : '–') + '<span class="unit"> %</span>';
+  document.getElementById('target').innerHTML =
+    (r.target_temperature != null ? r.target_temperature.toFixed(1) : '–') + '<span class="unit"> °C</span>';
+  document.getElementById('dry').textContent = `${r.dry_trays ?? '–'}`;
+
+  document.getElementById('actuators').innerHTML = ACTUATORS.map(([key, name]) => `
+    <div class="row">
+      <span><span class="dot ${a[key] ? 'on' : ''}"></span>${name}</span>
+      <span>
+        <button onclick="override('${key}', true)">Wł. 15 min</button>
+        <button onclick="override('${key}', false)">Wył.</button>
+        <button onclick="clearOverride('${key}')">Auto</button>
+      </span>
+    </div>`).join('');
+
+  document.getElementById('irr-state').textContent = i.state ?? '–';
+  document.getElementById('irr-pulses').textContent = i.pulses_today ?? '–';
+
+  const banner = document.getElementById('banner');
+  if (s.fault && s.fault !== 'none') {
+    banner.className = 'banner err';
+    banner.textContent = 'Usterka: ' + s.fault;
+  } else if (a.fan_reason && a.fan_reason !== 'off') {
+    banner.className = 'banner warn';
+    banner.textContent = 'Wentylacja aktywna: ' + a.fan_reason;
+  } else {
+    banner.className = 'banner';
+  }
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/status');
+    render(await res.json());
+  } catch (e) {
+    document.getElementById('meta').textContent = 'brak połączenia ze sterownikiem';
+  }
+}
+
+async function post(path, body) {
+  await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(body || {}) });
+  refresh();
+}
+const override = (actuator, value) => post('/api/override', { actuator, value, ttl_ms: 900000 });
+const clearOverride = (actuator) => post('/api/override', { actuator, clear: true });
+const resetFaults = () => post('/api/faults/reset');
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

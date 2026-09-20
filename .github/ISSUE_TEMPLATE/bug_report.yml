@@ -1,0 +1,51 @@
+name: Zgłoszenie błędu
+description: Coś nie działa tak, jak powinno
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Co się stało
+      description: Opisz zachowanie i to, czego oczekiwałeś.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Wersja firmware
+      description: Pole `version` z odpowiedzi `/api/status`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Wariant montażowy
+      options:
+        - nodemcuv2 (z multiplekserem TCA9548A)
+        - nodemcuv2-nomux (bez multipleksera)
+        - inny / zmodyfikowany
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: Odpowiedź /api/status
+      description: Pełny JSON z momentu wystąpienia problemu.
+      render: json
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logi z portu szeregowego
+      description: 115200 baud. Szczególnie przydatne linie `[fault]` i `[i2c]`.
+      render: shell
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Odstępstwa od schematu
+      description: Inne czujniki, inna liczba tac, zmieniona mapa pinów.

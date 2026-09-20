@@ -1,0 +1,40 @@
+name: Propozycja funkcji
+description: Pomysł na rozwój sterownika
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Jaka sytuacja w uprawie albo obsłudze szklarni jest dziś kłopotliwa?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proponowane rozwiązanie
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Której warstwy dotyczy
+      options:
+        - Logika sterowania (lib/gh_domain)
+        - Sterowniki sprzętu (src/drivers)
+        - Sieć, telemetria, API (src/infra)
+        - Panel WWW (data/)
+        - CI/CD i dokumentacja
+        - Nie wiem
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: hardware
+    attributes:
+      label: Wymagania sprzętowe
+      options:
+        - label: Ta funkcja wymaga dodatkowych podzespołów
+        - label: Ta funkcja wymaga wolnych GPIO na ESP8266

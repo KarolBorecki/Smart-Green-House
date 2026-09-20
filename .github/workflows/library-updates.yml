@@ -1,0 +1,54 @@
+name: Aktualizacje bibliotek
+
+# Dependabot nie zna PlatformIO, wiec zaleznosci z `lib_deps` sprawdzamy sami:
+# raz w tygodniu budujemy firmware z najnowszymi zgodnymi wersjami bibliotek
+# i zakladamy zgloszenie, jesli cos przestalo sie kompilowac.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Budowa z najnowszymi bibliotekami
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalacja PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Aktualizacja zaleznosci i kompilacja
+        id: build
+        continue-on-error: true
+        run: |
+          pio pkg update
+          pio run -e nodemcuv2
+          pio test -e native
+
+      - name: Zgloszenie problemu przy niepowodzeniu
+        if: steps.build.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Aktualizacja bibliotek psuje build';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'dependencies'
+            });
+            if (existing.data.some(i => i.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title,
+              labels: ['dependencies', 'bug'],
+              body: `Cotygodniowa budowa z najnowszymi wersjami bibliotek PlatformIO zakonczyla sie bledem.\n\n` +
+                    `Przebieg: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });

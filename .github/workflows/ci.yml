@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Testy jednostkowe logiki sterowania - najszybszy feedback, wiec pierwsze
+  # ---------------------------------------------------------------------
+  unit-tests:
+    name: Testy jednostkowe (native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-native-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-native-${{ runner.os }}-
+
+      - name: Instalacja PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Uruchomienie testow
+        run: pio test -e native --verbose
+
+  # ---------------------------------------------------------------------
+  # Kompilacja firmware dla wszystkich wariantow montazowych
+  # ---------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [nodemcuv2, nodemcuv2-nomux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ matrix.environment }}-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ matrix.environment }}-${{ runner.os }}-
+
+      - name: Instalacja PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Kompilacja firmware
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Budowa obrazu systemu plikow (panel WWW)
+        run: pio run -e ${{ matrix.environment }} -t buildfs
+
+      - name: Raport zuzycia pamieci
+        run: |
+          echo "### Zuzycie pamieci: ${{ matrix.environment }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          pio run -e ${{ matrix.environment }} -t size | tail -n 25 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publikacja artefaktow
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.bin
+            .pio/build/${{ matrix.environment }}/littlefs.bin
+          retention-days: 14
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------
+  # Analiza statyczna: cppcheck (przez PlatformIO) + clang-format
+  # ---------------------------------------------------------------------
+  static-analysis:
+    name: Analiza statyczna
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-check-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-check-${{ runner.os }}-
+
+      - name: Instalacja narzedzi
+        run: |
+          pip install --upgrade platformio
+          sudo apt-get update && sudo apt-get install -y cppcheck clang-format
+
+      - name: Kontrola formatowania
+        run: |
+          find src lib test -name '*.cpp' -o -name '*.h' \
+            | xargs clang-format --dry-run --Werror
+
+      - name: cppcheck
+        run: pio check -e nodemcuv2 --fail-on-defect=medium --fail-on-defect=high
+
+  # ---------------------------------------------------------------------
+  # Sanity check panelu WWW (rozmiar + poprawnosc JSON-owych fixture)
+  # ---------------------------------------------------------------------
+  web-assets:
+    name: Zasoby panelu WWW
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Limit rozmiaru obrazu LittleFS
+        run: |
+          size=$(du -sb data | cut -f1)
+          echo "Rozmiar katalogu data/: ${size} B"
+          # Partycja LittleFS przy ukladzie 4M/1M ma ok. 1 MB - trzymamy duzy zapas.
+          if [ "$size" -gt 524288 ]; then
+            echo "::error::Zasoby panelu przekraczaja 512 kB"
+            exit 1
+          fi
