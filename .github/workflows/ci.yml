@@ -22,7 +22,7 @@ jobs:
     name: Testy jednostkowe (native)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -57,7 +57,7 @@ jobs:
       matrix:
         environment: [nodemcuv2, nodemcuv2-nomux]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -107,7 +107,7 @@ jobs:
     name: Analiza statyczna
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -144,7 +144,7 @@ jobs:
     name: Zasoby panelu WWW
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Limit rozmiaru obrazu LittleFS
         run: |
